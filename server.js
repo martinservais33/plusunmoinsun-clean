@@ -202,4 +202,50 @@ app.get("/api/health-db", async (req, res) => {
   catch (e) { res.status(500).json({ ok: false, error: String(e) }); }
 });
 
+// État global (partie active + compteurs)
+app.get("/api/debug/status", async (req, res) => {
+  try {
+    const g = await pool.query("SELECT id, active FROM games ORDER BY id DESC LIMIT 1");
+    const active = g.rows[0]?.active ?? null;
+    const gameId = g.rows[0]?.id ?? null;
+    const papers = gameId ? (await pool.query("SELECT COUNT(*)::int AS c FROM papers WHERE game_id=$1", [gameId])).rows[0].c : 0;
+    const assigns = gameId ? (await pool.query(
+      "SELECT COUNT(*)::int AS c FROM read_assignments WHERE paper_id IN (SELECT id FROM papers WHERE game_id=$1)", [gameId]
+    )).rows[0].c : 0;
+    res.json({ gameId, active, papers, assigns });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// Liste brute des assignations (admin)
+app.get("/api/debug/assignments", auth, async (req, res) => {
+  try {
+    if (req.user.role !== "admin") return res.status(403).json({ error: "Admin only" });
+    const r = await pool.query(`
+      SELECT ra.id, ra.reader_id, p.id AS paper_id, p.target, p.type, p.message
+      FROM read_assignments ra
+      JOIN papers p ON p.id = ra.paper_id
+      ORDER BY ra.id ASC
+    `);
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// Voir mon lot tel quel (même que /api/reading/lot mais verbose)
+app.get("/api/debug/my-lot", auth, async (req, res) => {
+  try {
+    const g = await pool.query("SELECT id, active FROM games WHERE active=false ORDER BY id DESC LIMIT 1");
+    if (!g.rows.length) return res.json({ note: "Aucune partie clôturée", lot: [] });
+    const gameId = g.rows[0].id;
+    const r = await pool.query(`
+      SELECT p.id, p.type, p.target, p.message
+      FROM read_assignments ra
+      JOIN papers p ON p.id = ra.paper_id
+      WHERE p.game_id=$1 AND ra.reader_id=$2
+      ORDER BY ra.id ASC
+    `, [gameId, req.user.id]);
+    res.json({ user: req.user, lot: r.rows });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+
 app.listen(PORT, () => { console.log(`Server running on port ${PORT}`); });
