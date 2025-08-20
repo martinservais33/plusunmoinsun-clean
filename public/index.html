@@ -2,33 +2,67 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Jeu +1/-1</title>
-  <link rel="stylesheet" href="style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Papiers +1 / -1 — v2 (sans PIN joueurs)</title>
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <h1>Jeu +1 / -1</h1>
+  <div class="container">
+    <h1>Papiers +1 / -1</h1>
+    <div id="meBox" class="card"></div>
 
-  <section id="login">
-    <h2>Connexion</h2>
-    <input id="name" placeholder="Prénom">
-    <input id="pin" placeholder="PIN" type="password">
-    <button onclick="login()">Se connecter</button>
-  </section>
+    <section id="selectSection" class="card">
+      <h2>Qui es-tu ?</h2>
+      <div id="playersGrid" class="grid"></div>
+      <hr/>
+      <details>
+        <summary>Connexion admin</summary>
+        <div class="row">
+          <input id="adminName" placeholder="Nom admin">
+          <input id="adminPin" placeholder="PIN admin" type="password">
+          <button id="adminLoginBtn">Se connecter (admin)</button>
+        </div>
+      </details>
+    </section>
 
-  <section id="actions" style="display:none">
-    <h2>Écrire un papier</h2>
-    <input id="target" placeholder="Destinataire">
-    <select id="type">
-      <option value="plus">+1</option>
-      <option value="moins">-1</option>
-    </select>
-    <input id="message" placeholder="Message">
-    <button onclick="addPaper()">Envoyer</button>
+    <section id="writeSection" class="card" style="display:none;">
+      <h2>Écrire</h2>
+      <div class="row">
+        <label>Destinataire</label>
+        <select id="targetSelect"></select>
+      </div>
+      <div class="row">
+        <label>Type</label>
+        <select id="typeSelect">
+          <option value="plus">+1</option>
+          <option value="moins">-1</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Message</label>
+        <textarea id="messageInput" rows="3" placeholder="Ton message..."></textarea>
+      </div>
+      <button id="sendBtn">Envoyer</button>
 
-    <h2>Mes papiers</h2>
-    <ul id="mypapers"></ul>
-  </section>
+      <h3>Mon dernier papier</h3>
+      <div id="lastPaper"></div>
+    </section>
 
-  <script src="script.js"></script>
+    <section id="readingSection" class="card" style="display:none;">
+      <h2>Lecture (mon lot)</h2>
+      <button id="refreshLotBtn">Rafraîchir</button>
+      <ul id="lotList"></ul>
+    </section>
+
+    <section id="adminSection" class="card" style="display:none;">
+      <h2>Admin</h2>
+      <button id="startReadingBtn">Démarrer la lecture</button>
+      <p class="muted">Clôture la partie. Un pop-up te demandera confirmation.</p>
+      <h3>Tous les papiers (partie en cours)</h3>
+      <ul id="allPapers"></ul>
+    </section>
+  </div>
+
+  <script src="/script.js"></script>
 </body>
 </html>
