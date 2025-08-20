@@ -90,46 +90,6 @@ app.get("/api/health-db", async (req, res) => {
 app.get("/api/whoami", auth, (req, res) => {
   res.json({ user: req.user });
 });
-// DEBUG: lister les papiers (admin only)
-// Exemples: GET /api/debug/papers?limit=50  ou  ?game=1&limit=200
-app.get("/api/debug/papers", auth, async (req, res) => {
-  try {
-    if (req.user.role !== "admin") {
-      return res.status(403).json({ error: "Admin only" });
-    }
-    const limit = Math.min(parseInt(req.query.limit || "100", 10), 500); // cap à 500
-    const game = req.query.game; // optionnel: id de la game
-
-    const params = [];
-    let where = "";
-    if (game) {
-      params.push(game);
-      where = "WHERE p.game_id = $1";
-    }
-
-    const sql = `
-      SELECT
-        p.id,
-        p.game_id,
-        p.type,              -- 'plus'/'moins' (ou '+1'/'-1' selon ta version)
-        p.target,
-        p.message,
-        p.revealed,
-        p.created_at,
-        pl.name  AS author_name
-      FROM papers p
-      JOIN players pl ON pl.id = p.author_id
-      ${where}
-      ORDER BY p.created_at DESC
-      LIMIT ${limit};
-    `;
-    const r = await pool.query(sql, params);
-    res.json(r.rows);
-  } catch (e) {
-    console.error("DEBUG /papers error:", e);
-    res.status(500).json({ error: String(e) });
-  }
-});
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
