@@ -108,6 +108,33 @@ async function loadAllPapers() {
     ul.appendChild(li);
   });
 }
+async function closeGame() {
+  if (!confirm("Clôturer la partie en cours ?\nPlus personne ne pourra écrire.")) return;
+  try {
+    await api("/api/game/close", { method: "POST" });
+    alert("Partie clôturée.");
+    // Après clôture: écriture bloquée, lecture possible si tu déclenches /reading/start
+    await loadAllPapers();     // montre les papiers de la partie (maintenant close)
+    await refreshLastPaper();  // ton “dernier papier” reste visible mais tu ne peux plus en créer
+    await loadLot();           // si une lecture avait été lancée, ton lot s’affiche; sinon vide
+  } catch (e) {
+    alert("Impossible de clôturer : " + e.message);
+  }
+}
+
+async function newGame() {
+  if (!confirm("Créer une NOUVELLE partie ?\nL’ancienne sera clôturée.")) return;
+  try {
+    await api("/api/game/new", { method: "POST" });
+    alert("Nouvelle partie créée. C’est reparti !");
+    // Reset des vues liées à l’ancienne partie
+    await loadAllPapers();     // (vide sur une partie neuve)
+    await refreshLastPaper();  // (aucun dernier papier)
+    await loadLot();           // (vide tant que pas de lecture)
+  } catch (e) {
+    alert("Impossible de créer une nouvelle partie : " + e.message);
+  }
+}
 
 async function startReading() {
   if (!confirm("Démarrer la lecture ? Cela clôture la partie. Êtes-vous sûr ?")) return;
@@ -141,6 +168,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     catch (e) { alert("Admin KO: " + e.message); }
   };
   el("startReadingBtn").onclick = startReading;
+
+  el("closeGameBtn").onclick = closeGame;
+  el("newGameBtn").onclick = newGame;
 
   await refreshMe();
   await loadPlayers();

@@ -56,12 +56,22 @@
 
     <section id="adminSection" class="card" style="display:none;">
       <h2>Admin</h2>
-      <button id="startReadingBtn">Démarrer la lecture</button>
-      <p class="muted">Clôture la partie. Un pop-up te demandera confirmation.</p>
+    
+      <div class="row">
+        <button id="closeGameBtn">Clôturer la partie</button>
+        <button id="newGameBtn">Nouvelle partie</button>
+        <button id="startReadingBtn">Démarrer la lecture</button>
+      </div>
+      <p class="muted">
+        • “Clôturer la partie” empêche d’écrire de nouveaux papiers.<br>
+        • “Nouvelle partie” crée une partie vide et ré-ouvre l’écriture.<br>
+        • “Démarrer la lecture” clôture aussi la partie et distribue les lots de lecture.
+      </p>
+    
       <h3>Tous les papiers (partie en cours)</h3>
       <ul id="allPapers"></ul>
     </section>
-  </div>
+    
 
   <script src="/script.js"></script>
 </body>

@@ -156,6 +156,29 @@ app.post("/api/admin/reading/start", auth, adminOnly, async (req, res) => {
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
+// Clôturer la partie en cours (admin)
+app.post("/api/game/close", auth, adminOnly, async (req, res) => {
+  try {
+    const r = await pool.query("UPDATE games SET active=false WHERE active=true RETURNING id");
+    res.json({ ok: true, closedCount: r.rowCount });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Créer une nouvelle partie (admin)
+// Ferme d'abord l'éventuelle partie active, puis crée une nouvelle active=true
+app.post("/api/game/new", auth, adminOnly, async (req, res) => {
+  try {
+    await pool.query("UPDATE games SET active=false WHERE active=true");
+    const r = await pool.query("INSERT INTO games (active) VALUES (true) RETURNING id");
+    res.json({ ok: true, gameId: r.rows[0].id });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+
 // Reading: my lot (only after game is closed)
 app.get("/api/reading/lot", auth, async (req, res) => {
   try {
