@@ -66,6 +66,30 @@ app.post("/api/reveal/:id", auth, async (req, res) => {
   await pool.query("UPDATE papers SET revealed=true WHERE id=$1", [req.params.id]);
   res.json({ success: true });
 });
+// Voir les joueurs existants (pour vérifier le seed)
+app.get("/api/debug/players", async (req, res) => {
+  try {
+    const r = await pool.query("SELECT id, name, role FROM players ORDER BY id ASC");
+    res.json(r.rows);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Tester la connexion DB
+app.get("/api/health-db", async (req, res) => {
+  try {
+    const r = await pool.query("SELECT NOW()");
+    res.json({ ok: true, now: r.rows[0] });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+// Qui suis-je (après login)
+app.get("/api/whoami", auth, (req, res) => {
+  res.json({ user: req.user });
+});
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
