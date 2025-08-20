@@ -31,7 +31,13 @@ app.post("/api/login", async (req, res) => {
 
   const player = result.rows[0];
   const token = jwt.sign({ id: player.id, name: player.name, role: player.role }, SECRET, { expiresIn: "12h" });
-  res.cookie("token", token, { httpOnly: true });
+  const isProd = process.env.NODE_ENV === "production";
+  res.cookie("token", token, {
+  httpOnly: true,
+  sameSite: "lax",
+  secure: isProd, // true sur Render (https), false en local
+  maxAge: 1000 * 60 * 60 * 12 // 12h
+  });
   res.json({ success: true, role: player.role });
 });
 

@@ -1,20 +1,32 @@
+async function api(path, options = {}) {
+  const res = await fetch(path, {
+    credentials: "include",                  // <-- important !
+    headers: { "Content-Type": "application/json" },
+    ...options,
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 async function login() {
   const name = document.getElementById("name").value;
   const pin = document.getElementById("pin").value;
 
-  const res = await fetch("/api/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, pin })
-  });
+  try {
+    const data = await api("/api/login", {
+      method: "POST",
+      body: JSON.stringify({ name, pin })
+    });
 
-  const data = await res.json();
-  if (data.success) {
-    document.getElementById("login").style.display = "none";
-    document.getElementById("actions").style.display = "block";
-    loadMyPapers();
-  } else {
-    alert("Échec de connexion");
+    if (data.success) {
+      document.getElementById("login").style.display = "none";
+      document.getElementById("actions").style.display = "block";
+      loadMyPapers();
+    } else {
+      alert("Échec de connexion");
+    }
+  } catch (e) {
+    alert("Connexion impossible: " + e.message);
   }
 }
 
@@ -23,9 +35,8 @@ async function addPaper() {
   const type = document.getElementById("type").value;
   const message = document.getElementById("message").value;
 
-  await fetch("/api/paper", {
+  await api("/api/paper", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ target, type, message })
   });
 
@@ -33,8 +44,7 @@ async function addPaper() {
 }
 
 async function loadMyPapers() {
-  const res = await fetch("/api/mypapers");
-  const papers = await res.json();
+  const papers = await api("/api/mypapers");
   const list = document.getElementById("mypapers");
   list.innerHTML = "";
   papers.forEach(p => {
