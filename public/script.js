@@ -274,6 +274,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   el("closeGameBtn").onclick = closeGame;
   el("startReadingBtn").onclick = startReading;
   el("newGameBtn").onclick = newGame;
+  el("resetBtn").onclick = async () => {
+    if (!confirm("⚠️ Reset complet : joueurs + papiers vont disparaître. Continuer ?")) return;
+    try {
+      await api("/api/admin/reset", { method: "POST" });
+      toast("Base réinitialisée avec nouvelle liste de joueurs");
+      await loadPlayers();
+      await loadAllPapers();
+      await refreshLastPaper();
+      await loadLot();
+    } catch(e){
+      toast("Reset impossible: " + e.message, "error");
+    }
+  };
+  
   initTypeToggle();
 
   await refreshMe();

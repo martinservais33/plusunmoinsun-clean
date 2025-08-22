@@ -173,6 +173,38 @@ app.post("/api/game/new", auth, adminOnly, async (req, res) => {
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
+app.post("/api/admin/reset", auth, async (req, res) => {
+  if (req.user.role !== "admin") return res.status(403).json({ error: "Admin only" });
+
+  try {
+    // ⚠️ Supprime tout
+    await pool.query(`TRUNCATE read_assignments, papers, games, players RESTART IDENTITY CASCADE;`);
+
+    // Ajoute ici ta nouvelle liste fixe
+    const players = [
+      { name: "Martin", role: "admin", pin: null },
+      { name: "Antoine", role: "player", pin: null },
+      { name: "Léa", role: "player", pin: null },
+      { name: "Hugo", role: "player", pin: null },
+      { name: "Marie", role: "player", pin: null }
+    ];
+
+    for (const p of players) {
+      await pool.query(
+        "INSERT INTO players (name, role, pin) VALUES ($1,$2,$3)",
+        [p.name, p.role, p.pin]
+      );
+    }
+
+    // Crée une nouvelle partie active
+    await pool.query("INSERT INTO games (active) VALUES (true)");
+
+    res.json({ ok: true, players });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 // ---- admin: start reading (closes + assigns)
 app.post("/api/admin/reading/start", auth, adminOnly, async (req, res) => {
   try {
