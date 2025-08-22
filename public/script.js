@@ -35,10 +35,6 @@ async function loadPlayers() {
     btn.className = "playerBtn";
     btn.textContent = p.name + (p.role === "admin" ? " (admin)" : "");
     btn.onclick = async () => {
-      if (p.role === "admin") {
-        alert("Utilise le formulaire de connexion admin ci-dessous.");
-        return;
-      }
       try {
         await api("/api/auth/select", { method:"POST", body: JSON.stringify({ playerId: p.id }) });
         await afterLogin();
@@ -161,12 +157,7 @@ async function loadLot() {
 document.addEventListener("DOMContentLoaded", async () => {
   el("sendBtn").onclick = sendPaper;
   el("refreshLotBtn").onclick = loadLot;
-  el("adminLoginBtn").onclick = async () => {
-    const name = el("adminName").value.trim();
-    const pin = el("adminPin").value.trim();
-    try { await api("/api/auth/admin-login", { method:"POST", body: JSON.stringify({ name, pin }) }); await afterLogin(); }
-    catch (e) { alert("Admin KO: " + e.message); }
-  };
+  
   el("startReadingBtn").onclick = startReading;
 
   el("closeGameBtn").onclick = closeGame;
