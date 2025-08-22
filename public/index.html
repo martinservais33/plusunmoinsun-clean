@@ -1,1 +1,85 @@
-<!DOCTYPE html><html><body>index placeholder</body></html>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>+1 / -1 — Papiers</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar__left">
+      <div class="logo">+1 -1</div>
+      <div id="statusChip" class="chip chip--muted">Chargement…</div>
+    </div>
+    <div class="topbar__right">
+      <span id="meLabel" class="me-label">Non connecté trouduc fais un effort</span>
+      <button id="logoutBtn" class="btn btn--ghost" style="display:none;">Se déconnecter</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Connexion -->
+    <section id="selectSection" class="card">
+      <h2>t'es qui en vrai ? </h2>
+      <input id="playerSearch" class="input" placeholder="Rechercher un prénom…" />
+      <div id="playersGrid" class="chips-grid"></div>
+      <p class="muted">Appuie sur ton prénom pour appuyer sur ton prénom</p>
+    </section>
+
+    <!-- Écrire -->
+    <section id="writeSection" class="card" style="display:none;">
+      <h2>Écrire truc sympa (mdr)</h2>
+      <div class="row">
+        <label class="label">Destinataire</label>
+        <div id="targetsChips" class="chips-row"></div>
+      </div>
+
+      <div class="row type-toggle">
+        <button id="typePlus" class="toggle active">+1</button>
+        <button id="typeMoins" class="toggle">-1</button>
+      </div>
+
+      <textarea id="messageInput" class="textarea" rows="3" placeholder="Ton message…"></textarea>
+
+      <div class="row">
+        <button id="sendBtn" class="btn btn--primary">mettre dans le saladier</button>
+      </div>
+
+      <h3>Mon dernier papier</h3>
+      <div id="lastPaperBox" class="paper paper--empty">Aucun papier pour l’instant.</div>
+    </section>
+
+    <!-- Lecture -->
+    <section id="readingSection" class="card" style="display:none;">
+      <div class="section-header">
+        <h2>Lecture</h2>
+        <button id="refreshLotBtn" class="btn btn--ghost">Rafraîchir</button>
+      </div>
+      <div id="lotList" class="papers"></div>
+      <p id="lotEmpty" class="muted" style="display:none;">Rien à lire pour le moment (la lecture n’a peut-être pas encore été lancée).</p>
+    </section>
+
+    <!-- Admin -->
+    <section id="adminSection" class="card" style="display:none;">
+      <h2>Admin</h2>
+      <div class="row row--buttons">
+        <button id="resetBtn" class="btn btn--danger">Reset joueurs</button>
+        <button id="closeGameBtn" class="btn">Clôturer la partie</button>
+        <button id="startReadingBtn" class="btn btn--accent">Démarrer la lecture</button>
+        <button id="newGameBtn" class="btn btn--ghost">Nouvelle partie</button>
+      </div>
+      <p class="muted">Clôturer bloque l’écriture. Démarrer la lecture distribue les papiers. Nouvelle partie repart à zéro (historique conservé).</p>
+
+      <h3>Tous les papiers (partie active ou dernière clôturée)</h3>
+      <div id="allPapers" class="papers"></div>
+      <p id="allPapersEmpty" class="muted" style="display:none;">Aucun papier à afficher.</p>
+    </section>
+  </main>
+
+  <!-- Toasts -->
+  <div id="toasts" class="toasts"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>
