@@ -89,8 +89,8 @@ async function loadPlayers(){
   const list = await api("/api/players");
   PLAYERS = list;
   renderPlayersGrid(list);
-  // Destinataires (hors admin)
-  const targets = list.filter(p => p.role !== "admin");
+  // Destinataires (inclus admin)
+  const targets = list;
   const row = el("targetsChips");
   row.innerHTML = "";
   targets.forEach((p,i) => {
