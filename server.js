@@ -47,7 +47,7 @@ app.post("/api/auth/select", async (req, res) => {
     const r = await pool.query("SELECT id, name, role FROM players WHERE id=$1", [playerId]);
     if (!r.rows.length) return res.status(404).json({ error: "Player not found" });
     const p = r.rows[0];
-    if (p.role === "admin") return res.status(401).json({ error: "Admin requires PIN" });
+    
 
     const token = jwt.sign({ id: p.id, name: p.name, role: p.role }, SECRET, { expiresIn: "30d" });
     const isProd = process.env.NODE_ENV === "production";
