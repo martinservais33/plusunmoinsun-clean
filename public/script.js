@@ -1,168 +1,293 @@
-async function api(path, options = {}) {
+// ==== helpers fetch + UI ====
+function el(id){ return document.getElementById(id); }
+function text(node, t){ node.textContent = t; }
+function toast(msg, type="ok"){
+  const wrap = el("toasts");
+  const div = document.createElement("div");
+  div.className = "toast " + (type === "error" ? "toast--err" : "toast--ok");
+  div.textContent = msg;
+  wrap.appendChild(div);
+  setTimeout(()=> { div.style.opacity = ".0"; div.style.transform = "translateY(-6px)"; }, 2500);
+  setTimeout(()=> wrap.removeChild(div), 3000);
+}
+async function api(path, options={}){
   const res = await fetch(path, {
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    ...options,
+    ...options
   });
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(txt || `HTTP ${res.status}`);
+  if(!res.ok){
+    let t = await res.text().catch(()=> "");
+    throw new Error(t || ("HTTP "+res.status));
   }
   return res.json();
 }
 
-function el(id){ return document.getElementById(id); }
-function show(id, vis){ el(id).style.display = vis ? "" : "none"; }
+// ==== state ====
+let CURRENT_USER = null;
+let TARGET_NAME = null;
+let TYPE = "plus"; // or "moins"
+let PLAYERS = [];
 
-async function refreshMe() {
-  const { user } = await api("/api/auth/me");
-  const box = el("meBox");
-  if (user) {
-    box.innerHTML = `Connecté: <strong>${user.name}</strong> (${user.role}) <button id="logoutBtn">Se déconnecter</button>`;
-    el("logoutBtn").onclick = async () => { await api("/api/auth/logout", { method:"POST" }); location.reload(); };
-  } else {
-    box.innerHTML = "Non connecté";
+// ==== status chip ====
+async function refreshStatus(){
+  // Heuristique simple : si /api/reading/lot renvoie des items, on suppose "partie clôturée/lecture en cours"
+  try {
+    const lot = await api("/api/reading/lot");
+    const chip = el("statusChip");
+    if (Array.isArray(lot) && lot.length > 0){
+      chip.className = "chip chip--muted";
+      chip.textContent = "Lecture en cours";
+    } else {
+      // on ne sait pas si active ou close sans /api/game/state ; on affiche "Prêt"
+      chip.className = "chip chip--muted";
+      chip.textContent = "Prêt";
+    }
+  } catch {
+    const chip = el("statusChip");
+    chip.className = "chip chip--muted";
+    chip.textContent = "—";
   }
-  return user;
 }
 
-async function loadPlayers() {
-  const list = await api("/api/players");
+// ==== auth ====
+async function refreshMe(){
+  const me = await api("/api/auth/me");
+  CURRENT_USER = me.user;
+  const meLabel = el("meLabel");
+  const logoutBtn = el("logoutBtn");
+  if (CURRENT_USER){
+    meLabel.textContent = `Connecté : ${CURRENT_USER.name} (${CURRENT_USER.role})`;
+    logoutBtn.style.display = "";
+    logoutBtn.onclick = async () => { await api("/api/auth/logout", { method: "POST" }); location.reload(); }
+  } else {
+    meLabel.textContent = "Non connecté";
+    logoutBtn.style.display = "none";
+  }
+  return CURRENT_USER;
+}
+
+// ==== players ====
+function renderPlayersGrid(list){
   const grid = el("playersGrid");
   grid.innerHTML = "";
   list.forEach(p => {
-    const btn = document.createElement("button");
-    btn.className = "playerBtn";
-    btn.textContent = p.name + (p.role === "admin" ? " (admin)" : "");
-    btn.onclick = async () => {
+    const chip = document.createElement("button");
+    chip.className = "chip";
+    const initials = p.name.substring(0,1).toUpperCase();
+    chip.innerHTML = `<span class="chip__avatar">${initials}</span> ${p.name}`;
+    chip.onclick = async () => {
       try {
         await api("/api/auth/select", { method:"POST", body: JSON.stringify({ playerId: p.id }) });
         await afterLogin();
-      } catch (e) { alert("Connexion impossible: " + e.message); }
+      } catch(e){ toast("Connexion impossible", "error"); }
     };
-    grid.appendChild(btn);
-  });
-
-  const sel = el("targetSelect");
-  sel.innerHTML = "";
-  list.filter(p => p.role !== "admin").forEach(p => {
-    const opt = document.createElement("option");
-    opt.value = p.name;
-    opt.textContent = p.name;
-    sel.appendChild(opt);
+    grid.appendChild(chip);
   });
 }
-
-async function afterLogin() {
-  const me = await refreshMe();
-  if (!me) return;
-  show("selectSection", false);
-  show("writeSection", true);
-  show("readingSection", true);
-  if (me.role === "admin") show("adminSection", true);
-  await refreshLastPaper();
-  if (me.role === "admin") await loadAllPapers();
-  await loadLot();
+async function loadPlayers(){
+  const list = await api("/api/players");
+  PLAYERS = list;
+  renderPlayersGrid(list);
+  // Destinataires (hors admin)
+  const targets = list.filter(p => p.role !== "admin");
+  const row = el("targetsChips");
+  row.innerHTML = "";
+  targets.forEach((p,i) => {
+    const b = document.createElement("button");
+    b.className = "chip" + (i===0 ? " chip--active" : "");
+    b.textContent = p.name;
+    b.onclick = () => {
+      [...row.children].forEach(c => c.classList.remove("chip--active"));
+      b.classList.add("chip--active");
+      TARGET_NAME = p.name;
+    };
+    row.appendChild(b);
+    if (i===0) TARGET_NAME = p.name;
+  });
+}
+function filterPlayers(term){
+  const t = term.trim().toLowerCase();
+  if (!t) return renderPlayersGrid(PLAYERS);
+  renderPlayersGrid(PLAYERS.filter(p => p.name.toLowerCase().includes(t)));
 }
 
-async function sendPaper() {
-  const targetName = el("targetSelect").value;
-  const type = el("typeSelect").value;
-  const message = el("messageInput").value.trim();
-  if (!message) return alert("Message vide.");
+// ==== write ====
+function initTypeToggle(){
+  const plus = el("typePlus"), moins = el("typeMoins");
+  plus.onclick = () => { TYPE="plus"; plus.classList.add("active"); moins.classList.remove("active"); };
+  moins.onclick = () => { TYPE="moins"; moins.classList.add("active"); plus.classList.remove("active"); };
+}
+async function sendPaper(){
+  const msg = el("messageInput").value.trim();
+  if (!msg) return toast("Message vide", "error");
   try {
-    await api("/api/paper", { method:"POST", body: JSON.stringify({ targetName, type, message }) });
+    el("sendBtn").disabled = true;
+    await api("/api/paper", { method:"POST", body: JSON.stringify({ targetName: TARGET_NAME, type: TYPE, message: msg }) });
     el("messageInput").value = "";
+    toast("Papier envoyé");
     await refreshLastPaper();
-  } catch (e) { alert("Envoi KO: " + e.message); }
+  } catch(e){ toast("Envoi impossible", "error"); }
+  finally { el("sendBtn").disabled = false; }
 }
-
-async function refreshLastPaper() {
-  const p = await api("/api/my/last-paper");
-  const box = el("lastPaper");
-  if (!p) { box.textContent = "Aucun papier pour l'instant."; return; }
-  box.innerHTML = `
-    <div>
-      <span class="badge ${p.type==='plus' ? 'plus':'moins'}">${p.type === 'plus' ? '+1' : '-1'}</span>
-      à ${p.target} — ${p.message}
-      <button id="delLastBtn">Supprimer (si toujours le dernier)</button>
-    </div>`;
-  el("delLastBtn").onclick = async () => {
-    try { await api("/api/my/last-paper", { method:"DELETE" }); await refreshLastPaper(); }
-    catch (e) { alert("Suppression impossible: " + e.message); }
-  };
-}
-
-async function loadAllPapers() {
-  const list = await api("/api/admin/papers");
-  const ul = el("allPapers");
-  ul.innerHTML = "";
-  list.forEach(p => {
-    const li = document.createElement("li");
-    li.innerHTML = `<span class="badge ${p.type==='plus' ? 'plus':'moins'}">${p.type === 'plus' ? '+1' : '-1'}</span>
-      ${p.author_name} → ${p.target} — ${p.message}`;
-    ul.appendChild(li);
-  });
-}
-async function closeGame() {
-  if (!confirm("Clôturer la partie en cours ?\nPlus personne ne pourra écrire.")) return;
+async function refreshLastPaper(){
+  const box = el("lastPaperBox");
+  box.className = "paper paper--empty";
+  box.textContent = "Chargement…";
   try {
-    await api("/api/game/close", { method: "POST" });
-    alert("Partie clôturée.");
-    // Après clôture: écriture bloquée, lecture possible si tu déclenches /reading/start
-    await loadAllPapers();     // montre les papiers de la partie (maintenant close)
-    await refreshLastPaper();  // ton “dernier papier” reste visible mais tu ne peux plus en créer
-    await loadLot();           // si une lecture avait été lancée, ton lot s’affiche; sinon vide
-  } catch (e) {
-    alert("Impossible de clôturer : " + e.message);
+    const p = await api("/api/my/last-paper");
+    if (!p){ box.className = "paper paper--empty"; box.textContent = "Aucun papier pour l’instant."; return; }
+    box.className = "paper";
+    box.innerHTML = `
+      <div class="paper__meta">
+        <span class="badge ${p.type==='plus'?'plus':'moins'}">${p.type==='plus'?'+1':'-1'}</span>
+        <span class="paper__target">à ${p.target}</span>
+      </div>
+      <div class="paper__msg">${escapeHtml(p.message)}</div>
+      <div class="row" style="margin-top:8px;">
+        <button id="delLastBtn" class="btn btn--ghost">Supprimer</button>
+      </div>
+    `;
+    el("delLastBtn").onclick = async () => {
+      try { 
+        await api("/api/my/last-paper", { method:"DELETE" });
+        toast("Supprimé");
+        await refreshLastPaper();
+      } catch(e){ toast("Suppression impossible (pas le dernier ?)", "error"); }
+    };
+  } catch {
+    box.className = "paper paper--empty";
+    box.textContent = "Erreur de chargement.";
   }
 }
 
-async function newGame() {
-  if (!confirm("Créer une NOUVELLE partie ?\nL’ancienne sera clôturée.")) return;
-  try {
-    await api("/api/game/new", { method: "POST" });
-    alert("Nouvelle partie créée. C’est reparti !");
-    // Reset des vues liées à l’ancienne partie
-    await loadAllPapers();     // (vide sur une partie neuve)
-    await refreshLastPaper();  // (aucun dernier papier)
-    await loadLot();           // (vide tant que pas de lecture)
-  } catch (e) {
-    alert("Impossible de créer une nouvelle partie : " + e.message);
-  }
-}
-
-async function startReading() {
-  if (!confirm("Démarrer la lecture ? Cela clôture la partie. Êtes-vous sûr ?")) return;
-  try {
-    await api("/api/admin/reading/start", { method:"POST" });
-    alert("Lecture démarrée. Ouvrez l'onglet 'Lecture'.");
-    await loadLot();
-  } catch (e) { alert("Impossible de démarrer: " + e.message); }
-}
-
-async function loadLot() {
+// ==== reading ====
+async function loadLot(){
+  const listWrap = el("lotList");
+  const empty = el("lotEmpty");
+  listWrap.innerHTML = "";
   try {
     const lot = await api("/api/reading/lot");
-    const ul = el("lotList");
-    ul.innerHTML = "";
+    if (!lot || lot.length === 0){
+      empty.style.display = "";
+      return;
+    }
+    empty.style.display = "none";
     lot.forEach(p => {
-      const li = document.createElement("li");
-      li.innerHTML = `<span class="badge ${p.type==='plus' ? 'plus':'moins'}">${p.type==='plus'?'+1':'-1'}</span> à ${p.target} — ${p.message}`;
-      ul.appendChild(li);
+      const card = document.createElement("div");
+      card.className = "paper";
+      card.innerHTML = `
+        <div class="paper__meta">
+          <span class="badge ${p.type==='plus'?'plus':'moins'}">${p.type==='plus'?'+1':'-1'}</span>
+          <span class="paper__target">à ${p.target}</span>
+        </div>
+        <div class="paper__msg">${escapeHtml(p.message)}</div>
+      `;
+      listWrap.appendChild(card);
     });
-  } catch (e) {}
+  } catch { empty.style.display = ""; }
 }
 
+// ==== admin ====
+async function loadAllPapers(){
+  const wrap = el("allPapers");
+  const empty = el("allPapersEmpty");
+  wrap.innerHTML = "";
+  try {
+    const list = await api("/api/admin/papers");
+    if (!list || list.length === 0){ empty.style.display = ""; return; }
+    empty.style.display = "none";
+    list.forEach(p => {
+      const card = document.createElement("div");
+      card.className = "paper";
+      card.innerHTML = `
+        <div class="paper__meta">
+          <span class="badge ${p.type==='plus'?'plus':'moins'}">${p.type==='plus'?'+1':'-1'}</span>
+          <span class="paper__target">${escapeHtml(p.author_name)} → ${escapeHtml(p.target)}</span>
+        </div>
+        <div class="paper__msg">${escapeHtml(p.message)}</div>
+      `;
+      wrap.appendChild(card);
+    });
+  } catch { empty.style.display = ""; }
+}
+async function closeGame(){
+  if (!confirm("Clôturer la partie ?")) return;
+  try {
+    await api("/api/game/close", { method:"POST" });
+    toast("Partie clôturée");
+    await refreshStatus();
+    await loadAllPapers();
+  } catch(e){ toast("Clôture impossible", "error"); }
+}
+async function startReading(){
+  if (!confirm("Démarrer la lecture ?")) return;
+  try {
+    const r = await api("/api/admin/reading/start", { method:"POST" });
+    toast(`Lecture lancée (${r.assigned ?? "?"} papiers assignés)`);
+    await refreshStatus();
+    await loadLot();
+  } catch(e){ toast("Impossible de lancer la lecture", "error"); }
+}
+async function newGame(){
+  if (!confirm("Créer une nouvelle partie ? (l’ancienne restera en historique)")) return;
+  try {
+    await api("/api/game/new", { method:"POST" });
+    toast("Nouvelle partie créée");
+    await refreshStatus();
+    await loadAllPapers();
+    await refreshLastPaper();
+    await loadLot();
+  } catch(e){ toast("Impossible de créer une nouvelle partie", "error"); }
+}
+
+// ==== utils ====
+function escapeHtml(str){
+  return String(str)
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;");
+}
+
+// ==== after login ====
+async function afterLogin(){
+  const me = await refreshMe();
+  if (!me) return;
+
+  el("selectSection").style.display = "none";
+  el("writeSection").style.display = "";
+  el("readingSection").style.display = "";
+  if (me.role === "admin") el("adminSection").style.display = "";
+
+  await refreshStatus();
+  await refreshLastPaper();
+  await loadLot();
+  if (me.role === "admin") await loadAllPapers();
+}
+
+// ==== boot ====
 document.addEventListener("DOMContentLoaded", async () => {
+  // Hook UI
+  el("playerSearch").addEventListener("input", (e)=> filterPlayers(e.target.value));
   el("sendBtn").onclick = sendPaper;
   el("refreshLotBtn").onclick = loadLot;
-  
-  el("startReadingBtn").onclick = startReading;
-
   el("closeGameBtn").onclick = closeGame;
+  el("startReadingBtn").onclick = startReading;
   el("newGameBtn").onclick = newGame;
+  initTypeToggle();
 
   await refreshMe();
   await loadPlayers();
+  await refreshStatus();
+
+  // Afficher ou masquer sections selon connexion initiale
+  if (CURRENT_USER){
+    el("selectSection").style.display = "none";
+    el("writeSection").style.display = "";
+    el("readingSection").style.display = "";
+    if (CURRENT_USER.role === "admin") el("adminSection").style.display = "";
+    await refreshLastPaper();
+    await loadLot();
+    if (CURRENT_USER.role === "admin") await loadAllPapers();
+  }
 });
