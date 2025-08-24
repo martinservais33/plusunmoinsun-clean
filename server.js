@@ -203,33 +203,48 @@ app.post("/api/admin/reset", auth, async (req, res) => {
   if (req.user.role !== "admin") return res.status(403).json({ error: "Admin only" });
 
   try {
-    // ⚠️ Supprime tout
+    // 1) Tout remettre à zéro
     await pool.query(`TRUNCATE read_assignments, papers, games, players RESTART IDENTITY CASCADE;`);
 
-    // Ajoute ici ta nouvelle liste fixe
-    const players = [
-      { name: "Martin", role: "admin", pin: null },
-      { name: "Antoine", role: "player", pin: null },
-      { name: "Léa", role: "player", pin: null },
-      { name: "Hugo", role: "player", pin: null },
-      { name: "Marie", role: "player", pin: null }
+    // 2) Parser PLAYER_SEED (format: "Nom:PIN[:role],Nom:PIN[:role],...")
+    const seed = process.env.PLAYER_SEED || "";
+    const parsed = seed
+      .split(",")
+      .map(s => s.trim())
+      .filter(s => s.length > 0)
+      .map(raw => {
+        const parts = raw.split(":").map(x => x.trim());
+        const name = parts[0];
+        const pin  = parts[1] ?? "0000";                  // évite NOT NULL
+        const role = (parts[2]?.toLowerCase() || "player"); // défaut "player"
+        return { name, pin, role };
+      });
+
+    // 3) Filet de sécurité : si PLAYER_SEED est vide ou invalide, on met une petite liste par défaut
+    const players = parsed.length ? parsed : [
+      { name: "Admin",  pin: "0000", role: "admin" },
+      { name: "Joueur", pin: "0000", role: "player" }
     ];
 
+    // 4) Insérer les joueurs (on ignore les lignes sans nom)
     for (const p of players) {
+      if (!p.name) continue;
       await pool.query(
-        "INSERT INTO players (name, role, pin) VALUES ($1,$2,$3)",
-        [p.name, p.role, p.pin]
+        `INSERT INTO players (name, role, pin) VALUES ($1,$2,$3)`,
+        [p.name, p.role, String(p.pin)]
       );
     }
 
-    // Crée une nouvelle partie active
-    await pool.query("INSERT INTO games (active) VALUES (true)");
+    // 5) Créer une nouvelle partie active
+    await pool.query(`INSERT INTO games (active) VALUES (true)`);
 
-    res.json({ ok: true, players });
+    res.json({ ok: true, count: players.length, players });
   } catch (e) {
+    console.error("[admin/reset] failed:", e);
     res.status(500).json({ error: String(e) });
   }
 });
+
 
 // ---- admin: start reading (closes + assigns)
 // ---- admin: start reading (closes + assigns)
