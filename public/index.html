@@ -27,6 +27,20 @@
       <p class="muted">Appuie sur ton prénom pour appuyer sur ton prénom</p>
     </section>
 
+    <section id="historySection" class="card">
+      <h2>Historique</h2>
+      <button id="showHistoryBtn" class="btn">Voir l’historique des parties</button>
+    </section>
+    
+    <!-- Fenêtre modale ou zone qui s’affiche quand on clique -->
+    <section id="historyPage" class="card" style="display:none;">
+      <h2>Historique des parties</h2>
+      <div id="gamesList"></div>
+      <div id="papersList" style="margin-top:1em;"></div>
+      <button id="closeHistoryBtn" class="btn btn--ghost">Fermer</button>
+    </section>
+    
+
     <!-- Écrire -->
     <section id="writeSection" class="card" style="display:none;">
       <h2>L'inspiration vient en mangeant. -Un gras</h2>

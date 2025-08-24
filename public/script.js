@@ -313,8 +313,74 @@ async function afterLogin(){
   if (me.role === "admin") await loadAllPapers();
 }
 
+// ==== historique ====
+
+// Liste les parties passées
+async function loadGames() {
+  const listWrap = el("gamesList");
+  const papersWrap = el("papersList");
+  listWrap.innerHTML = "Chargement...";
+  papersWrap.innerHTML = "";
+  try {
+    const games = await api("/api/games");
+    if (!games.length) {
+      listWrap.textContent = "Aucune partie terminée.";
+      return;
+    }
+    listWrap.innerHTML = "";
+    games.forEach(g => {
+      const btn = document.createElement("button");
+      btn.className = "btn btn--ghost";
+      btn.textContent = `Partie #${g.id} (${g.date}) – ${g.papers} papiers`;
+      btn.onclick = () => loadPapers(g.id);
+      listWrap.appendChild(btn);
+    });
+  } catch {
+    listWrap.textContent = "Impossible de charger l’historique.";
+  }
+}
+
+// Charge les papiers d’une partie
+async function loadPapers(gameId) {
+  const papersWrap = el("papersList");
+  papersWrap.innerHTML = "Chargement...";
+  try {
+    const list = await api(`/api/games/${gameId}/papers`);
+    if (!list.length) {
+      papersWrap.textContent = "Aucun papier.";
+      return;
+    }
+    papersWrap.innerHTML = "";
+    list.forEach(p => {
+      const card = document.createElement("div");
+      card.className = "paper";
+      card.innerHTML = `
+        <div class="paper__meta">
+          <span class="badge ${p.type==='plus'?'plus':'moins'}">${p.type==='plus'?'+1':'-1'}</span>
+          <span class="paper__target">à ${escapeHtml(p.target)}</span>
+        </div>
+        <div class="paper__msg">${escapeHtml(p.message)}</div>
+        <div class="paper__author">${p.revealed ? "Auteur : "+escapeHtml(p.author_name) : ""}</div>
+      `;
+      papersWrap.appendChild(card);
+    });
+  } catch {
+    papersWrap.textContent = "Erreur de chargement des papiers.";
+  }
+}
+
+// Brancher les boutons
 // ==== boot ====
 document.addEventListener("DOMContentLoaded", async () => {
+  
+  el("showHistoryBtn").onclick = () => {
+    el("historyPage").style.display = "";
+    loadGames();
+  };
+  el("closeHistoryBtn").onclick = () => {
+    el("historyPage").style.display = "none";
+  };
+
   // Hook UI
   el("playerSearch").addEventListener("input", (e)=> filterPlayers(e.target.value));
   el("sendBtn").onclick = sendPaper;
@@ -335,7 +401,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       toast("Reset impossible: " + e.message, "error");
     }
   };
-  
+
   initTypeToggle();
 
   await refreshMe();
@@ -353,3 +419,4 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (CURRENT_USER.role === "admin") await loadAllPapers();
   }
 });
+

@@ -426,6 +426,66 @@ app.post("/api/reading/skip", auth, async (req, res) => {
   }
 });
 
+// Liste des parties passées
+// Liste des parties passées (stats incluses)
+app.get("/api/games", async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT
+        g.id,
+        g.active,
+        g.created_at,
+        COUNT(p.id)::int                         AS total_papers,
+        SUM((p.type = 'plus')::int)::int        AS total_plus,
+        SUM((p.type = 'moins')::int)::int       AS total_moins,
+        SUM((p.revealed = true)::int)::int      AS total_revealed
+      FROM games g
+      LEFT JOIN papers p ON p.game_id = g.id
+      WHERE g.active = false
+      GROUP BY g.id
+      ORDER BY g.id DESC
+      LIMIT 20
+    `);
+    res.json(r.rows);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+
+// Papiers d’une partie donnée
+// Papiers d’une partie donnée (auteur visible si révélé ou si admin)
+app.get("/api/games/:id/papers", async (req, res) => {
+  try {
+    const gameId = req.params.id;
+    const r = await pool.query(`
+      SELECT
+        p.id, p.type, p.target, p.message, COALESCE(p.revealed,false) AS revealed,
+        pl.name AS author_name
+      FROM papers p
+      JOIN players pl ON pl.id = p.author_id
+      WHERE p.game_id = $1
+      ORDER BY p.id ASC
+    `, [gameId]);
+
+    // Déterminer le rôle depuis le cookie (ou guest si pas connecté)
+    let role = "guest";
+    const token = req.cookies.token;
+    if (token) { try { role = jwt.verify(token, SECRET).role; } catch {} }
+
+    const rows = r.rows.map(p => {
+      if (p.revealed || role === "admin") return p;
+      const { author_name, ...rest } = p;
+      return { ...rest, author_name: null };
+    });
+
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
