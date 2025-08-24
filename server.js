@@ -232,35 +232,38 @@ app.post("/api/admin/reset", auth, async (req, res) => {
 });
 
 // ---- admin: start reading (closes + assigns)
+// ---- admin: start reading (closes + assigns)
 app.post("/api/admin/reading/start", auth, async (req, res) => {
   if (req.user.role !== "admin") return res.status(403).json({ error: "Admin only" });
 
   try {
     await ensureReadAssignmentsColumns();
 
-    // 1) Partie active
+    // Partie active
     const gameIdRow = await pool.query("SELECT id FROM games WHERE active=true LIMIT 1");
     if (!gameIdRow.rows.length) return res.status(400).json({ error: "No active game" });
     const gameId = gameIdRow.rows[0].id;
+    console.log("[reading/start] gameId:", gameId);
 
-    // 2) Clôturer
+    // Clôturer
     await pool.query("UPDATE games SET active=false WHERE id=$1", [gameId]);
 
-    // 3) Purge anciennes assignations
+    // Purge anciennes assignations
     await pool.query(`
       DELETE FROM read_assignments
       WHERE paper_id IN (SELECT id FROM papers WHERE game_id=$1)
     `, [gameId]);
 
-    // 4) Papiers de la partie
+    // Papiers
     const paperRows = await pool.query(
-      "SELECT id FROM papers WHERE game_id=$1 ORDER BY id ASC",
+      "SELECT id, target FROM papers WHERE game_id=$1 ORDER BY id ASC",
       [gameId]
     );
-    const papers = paperRows.rows.map(r => r.id);
+    const papers = paperRows.rows;
+    console.log("[reading/start] papers:", papers.length);
     if (!papers.length) return res.json({ ok: true, assigned: 0 });
 
-    // 5) Lecteurs éligibles = auteurs (admin inclus s'il a écrit)
+    // Lecteurs éligibles = auteurs (ou tous si aucun auteur)
     const readersRows = await pool.query(
       `SELECT pl.id, pl.name
        FROM players pl
@@ -271,60 +274,52 @@ app.post("/api/admin/reading/start", auth, async (req, res) => {
        ORDER BY pl.name ASC`,
       [gameId]
     );
-    let readers = readersRows.rows.map(r => r.id);
-
-    // Fallback : s'il n'y a aucun auteur, on répartit sur tous les joueurs
+    let readers = readersRows.rows;
     if (!readers.length) {
-      const all = await pool.query("SELECT id FROM players ORDER BY name ASC");
-      readers = all.rows.map(r => r.id);
-      if (!readers.length) return res.json({ ok: true, assigned: 0 });
+      const all = await pool.query("SELECT id, name FROM players ORDER BY name ASC");
+      readers = all.rows;
     }
+    console.log("[reading/start] eligible readers:", readers.length);
 
-    // 6) Répartition équitable (round-robin) + ordre de lecture
+    // Créer un mapping id -> name pour éviter un SELECT à chaque papier
+    const idToName = {};
+    for (const r of readers) idToName[r.id] = r.name;
+
+    // Distribution round-robin
     const randomized = shuffle(papers);
     let idx = 0, order = 1;
-    for (const pid of randomized) {
-      // On récupère le papier avec sa cible
-      const paperRes = await pool.query(
-        "SELECT target FROM papers WHERE id=$1",
-        [pid]
-      );
-      const targetName = paperRes.rows[0].target;
-    
-      // On cherche un lecteur qui n’est PAS la cible
+    for (const paper of randomized) {
+      const targetName = paper.target;
       let assignedReader = null;
+
       for (let tries = 0; tries < readers.length; tries++) {
         const candidate = readers[(idx + tries) % readers.length];
-        // Récupère le nom du candidat
-        const rnameRes = await pool.query("SELECT name FROM players WHERE id=$1", [candidate]);
-        const candidateName = rnameRes.rows[0].name;
-        if (candidateName !== targetName) {
-          assignedReader = candidate;
-          idx = (idx + tries + 1); // avance l’index
+        if (idToName[candidate.id] !== targetName) {
+          assignedReader = candidate.id;
+          idx = (idx + tries + 1);
           break;
         }
       }
-    
-      // Si tout le monde était la cible (cas théorique), on assigne quand même au premier
-      if (!assignedReader) {
-        assignedReader = readers[idx % readers.length];
+
+      if (!assignedReader) { // cas limite
+        assignedReader = readers[idx % readers.length].id;
         idx++;
       }
-    
+
       await pool.query(
         `INSERT INTO read_assignments (paper_id, reader_id, read_order, revealed, consumed)
          VALUES ($1,$2,$3,false,false)`,
-        [pid, assignedReader, order++]
+        [paper.id, assignedReader, order++]
       );
     }
-    
 
     res.json({ ok: true, assigned: papers.length, readers: readers.length });
   } catch (e) {
-    console.error(e);
+    console.error("[reading/start] failed:", e);
     res.status(500).json({ error: String(e) });
   }
 });
+
 
 
 // ---- player: my reading lot (from LAST closed game)
