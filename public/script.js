@@ -161,31 +161,79 @@ async function refreshLastPaper(){
   }
 }
 
-// ==== reading ====
-async function loadLot(){
+// ==== reading ==== 
+// ==== lecture "un par un" ====
+let CURRENT_ASSIGNMENT_ID = null;
+
+async function loadNextToRead(){
   const listWrap = el("lotList");
   const empty = el("lotEmpty");
+  if (!listWrap) return;
   listWrap.innerHTML = "";
   try {
-    const lot = await api("/api/reading/lot");
-    if (!lot || lot.length === 0){
-      empty.style.display = "";
+    const r = await api("/api/reading/next");
+    if (r.done){
+      if (empty) empty.style.display = "";
       return;
     }
-    empty.style.display = "none";
-    lot.forEach(p => {
-      const card = document.createElement("div");
-      card.className = "paper";
-      card.innerHTML = `
-        <div class="paper__meta">
-          <span class="badge ${p.type==='plus'?'plus':'moins'}">${p.type==='plus'?'+1':'-1'}</span>
-          <span class="paper__target">à ${p.target}</span>
-        </div>
-        <div class="paper__msg">${escapeHtml(p.message)}</div>
-      `;
-      listWrap.appendChild(card);
+    if (empty) empty.style.display = "none";
+    const p = r.item;
+    CURRENT_ASSIGNMENT_ID = p.assignment_id;
+
+    const card = document.createElement("div");
+    card.className = "paper";
+    card.innerHTML = `
+      <div class="paper__meta">
+        <span class="badge ${p.type==='plus'?'plus':'moins'}">${p.type==='plus'?'+1':'-1'}</span>
+        <span class="paper__target">à ${escapeHtml(p.target)}</span>
+      </div>
+      <div class="paper__msg">${escapeHtml(p.message)}</div>
+      <div class="row" style="margin-top:10px;">
+        <button id="revealBtn" class="btn btn--accent">Révéler l’auteur</button>
+        <button id="skipBtn" class="btn btn--ghost">Suivant</button>
+      </div>
+    `;
+    listWrap.appendChild(card);
+
+    el("revealBtn").onclick = revealCurrent;
+    el("skipBtn").onclick = skipCurrent;
+  } catch {
+    if (empty) empty.style.display = "";
+  }
+}
+
+async function revealCurrent(){
+  if (!CURRENT_ASSIGNMENT_ID) return;
+  try {
+    const r = await api("/api/reading/reveal", {
+      method:"POST",
+      body: JSON.stringify({ assignmentId: CURRENT_ASSIGNMENT_ID })
     });
-  } catch { empty.style.display = ""; }
+    const listWrap = el("lotList");
+    if (listWrap){
+      listWrap.innerHTML = `
+        <div class="paper">
+          <div class="paper__msg"><strong>Auteur :</strong> ${escapeHtml(r.author)}</div>
+          <div class="row" style="margin-top:10px;">
+            <button id="nextAfterReveal" class="btn">Continuer</button>
+          </div>
+        </div>
+      `;
+      el("nextAfterReveal").onclick = () => { CURRENT_ASSIGNMENT_ID = null; loadNextToRead(); };
+    }
+  } catch(e){ toast("Action impossible", "error"); }
+}
+
+async function skipCurrent(){
+  if (!CURRENT_ASSIGNMENT_ID) return;
+  try {
+    await api("/api/reading/skip", {
+      method:"POST",
+      body: JSON.stringify({ assignmentId: CURRENT_ASSIGNMENT_ID })
+    });
+    CURRENT_ASSIGNMENT_ID = null;
+    await loadNextToRead();
+  } catch(e){ toast("Action impossible", "error"); }
 }
 
 // ==== admin ====
@@ -226,7 +274,7 @@ async function startReading(){
     const r = await api("/api/admin/reading/start", { method:"POST" });
     toast(`Lecture lancée (${r.assigned ?? "?"} papiers assignés)`);
     await refreshStatus();
-    await loadLot();
+    await loadNextToRead();
   } catch(e){ toast("Impossible de lancer la lecture", "error"); }
 }
 async function newGame(){
@@ -237,7 +285,7 @@ async function newGame(){
     await refreshStatus();
     await loadAllPapers();
     await refreshLastPaper();
-    await loadLot();
+    await loadNextToRead();
   } catch(e){ toast("Impossible de créer une nouvelle partie", "error"); }
 }
 
@@ -261,7 +309,7 @@ async function afterLogin(){
 
   await refreshStatus();
   await refreshLastPaper();
-  await loadLot();
+  await loadNextToRead();
   if (me.role === "admin") await loadAllPapers();
 }
 
@@ -270,7 +318,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Hook UI
   el("playerSearch").addEventListener("input", (e)=> filterPlayers(e.target.value));
   el("sendBtn").onclick = sendPaper;
-  el("refreshLotBtn").onclick = loadLot;
+  el("refreshLotBtn").onclick = loadNextToRead;
   el("closeGameBtn").onclick = closeGame;
   el("startReadingBtn").onclick = startReading;
   el("newGameBtn").onclick = newGame;
@@ -282,7 +330,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       await loadPlayers();
       await loadAllPapers();
       await refreshLastPaper();
-      await loadLot();
+      await loadNextToRead();
     } catch(e){
       toast("Reset impossible: " + e.message, "error");
     }
@@ -301,7 +349,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     el("readingSection").style.display = "";
     if (CURRENT_USER.role === "admin") el("adminSection").style.display = "";
     await refreshLastPaper();
-    await loadLot();
+    await loadNextToRead();
     if (CURRENT_USER.role === "admin") await loadAllPapers();
   }
 });

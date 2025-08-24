@@ -13,11 +13,20 @@ app.use(cookieParser());
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.static("public"));
 
-async function ensureReadAssignmentsColumns(){
-  // champs utiles (ajoutés si absents)
+// Assure les colonnes nécessaires (idempotent)
+async function ensureReadAssignmentsColumns() {
+  await pool.query(`CREATE TABLE IF NOT EXISTS read_assignments (
+    id SERIAL PRIMARY KEY,
+    paper_id INT REFERENCES papers(id) ON DELETE CASCADE,
+    reader_id INT REFERENCES players(id),
+    revealed BOOLEAN DEFAULT false,
+    consumed BOOLEAN DEFAULT false,
+    read_order INT
+  );`);
   await pool.query(`ALTER TABLE read_assignments ADD COLUMN IF NOT EXISTS revealed BOOLEAN DEFAULT false;`);
   await pool.query(`ALTER TABLE read_assignments ADD COLUMN IF NOT EXISTS consumed BOOLEAN DEFAULT false;`);
   await pool.query(`ALTER TABLE read_assignments ADD COLUMN IF NOT EXISTS read_order INT;`);
+  await pool.query(`ALTER TABLE papers ADD COLUMN IF NOT EXISTS revealed BOOLEAN DEFAULT false;`);
 }
 
 function shuffle(arr){
@@ -319,6 +328,84 @@ app.get("/api/health-db", async (req, res) => {
     res.status(500).json({ ok: false, error: String(e) });
   }
 });
+
+// 1) Récupère le prochain papier à lire pour l'utilisateur courant
+app.get("/api/reading/next", auth, async (req, res) => {
+  try {
+    await ensureReadAssignmentsColumns();
+    const gameId = await getLastClosedGameId();
+    if (!gameId) return res.json({ done: true }); // pas encore de partie clôturée
+
+    const r = await pool.query(
+      `SELECT ra.id AS assignment_id, p.id AS paper_id, p.type, p.target, p.message
+       FROM read_assignments ra
+       JOIN papers p ON p.id = ra.paper_id
+       WHERE p.game_id=$1 AND ra.reader_id=$2 AND ra.consumed=false
+       ORDER BY ra.read_order ASC, ra.id ASC
+       LIMIT 1`,
+      [gameId, req.user.id]
+    );
+    if (!r.rows.length) return res.json({ done: true });
+    res.json({ done: false, item: r.rows[0] });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// 2) Révèle l’auteur (consomme l’item + marque le papier comme révélé globalement)
+app.post("/api/reading/reveal", auth, async (req, res) => {
+  try {
+    const { assignmentId } = req.body || {};
+    if (!assignmentId) return res.status(400).json({ error: "Missing assignmentId" });
+    await ensureReadAssignmentsColumns();
+    const gameId = await getLastClosedGameId();
+    if (!gameId) return res.status(400).json({ error: "No closed game" });
+
+    // Vérifie propriété + récupère l'auteur
+    const r = await pool.query(
+      `SELECT ra.id, p.id AS paper_id, a.name AS author_name
+       FROM read_assignments ra
+       JOIN papers p ON p.id = ra.paper_id
+       JOIN players a ON a.id = p.author_id
+       WHERE ra.id=$1 AND ra.reader_id=$2 AND p.game_id=$3`,
+      [assignmentId, req.user.id, gameId]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: "Assignment not found" });
+
+    const { paper_id, author_name } = r.rows[0];
+    await pool.query(`UPDATE read_assignments SET revealed=true, consumed=true WHERE id=$1`, [assignmentId]);
+    await pool.query(`UPDATE papers SET revealed=true WHERE id=$1`, [paper_id]);
+
+    res.json({ ok: true, author: author_name });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// 3) Passe au suivant sans révéler (consomme seulement)
+app.post("/api/reading/skip", auth, async (req, res) => {
+  try {
+    const { assignmentId } = req.body || {};
+    if (!assignmentId) return res.status(400).json({ error: "Missing assignmentId" });
+    await ensureReadAssignmentsColumns();
+    const gameId = await getLastClosedGameId();
+    if (!gameId) return res.status(400).json({ error: "No closed game" });
+
+    const r = await pool.query(
+      `UPDATE read_assignments ra
+       SET consumed=true
+       FROM papers p
+       WHERE ra.id=$1 AND ra.reader_id=$2 AND p.id=ra.paper_id AND p.game_id=$3
+       RETURNING ra.id`,
+      [assignmentId, req.user.id, gameId]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: "Assignment not found" });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
