@@ -13,6 +13,23 @@ app.use(cookieParser());
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.static("public"));
 
+async function ensureReadAssignmentsColumns(){
+  // champs utiles (ajoutés si absents)
+  await pool.query(`ALTER TABLE read_assignments ADD COLUMN IF NOT EXISTS revealed BOOLEAN DEFAULT false;`);
+  await pool.query(`ALTER TABLE read_assignments ADD COLUMN IF NOT EXISTS consumed BOOLEAN DEFAULT false;`);
+  await pool.query(`ALTER TABLE read_assignments ADD COLUMN IF NOT EXISTS read_order INT;`);
+}
+
+function shuffle(arr){
+  const a = [...arr];
+  for (let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+
+
 // ---- helpers
 function auth(req, res, next) {
   const token = req.cookies.token;
@@ -206,42 +223,75 @@ app.post("/api/admin/reset", auth, async (req, res) => {
 });
 
 // ---- admin: start reading (closes + assigns)
-app.post("/api/admin/reading/start", auth, adminOnly, async (req, res) => {
-  try {
-    const gameId = await getActiveGameId();
-    if (!gameId) return res.status(400).json({ error: "No active game" });
+app.post("/api/admin/reading/start", auth, async (req, res) => {
+  if (req.user.role !== "admin") return res.status(403).json({ error: "Admin only" });
 
+  try {
+    await ensureReadAssignmentsColumns();
+
+    // 1) Partie active
+    const gameIdRow = await pool.query("SELECT id FROM games WHERE active=true LIMIT 1");
+    if (!gameIdRow.rows.length) return res.status(400).json({ error: "No active game" });
+    const gameId = gameIdRow.rows[0].id;
+
+    // 2) Clôturer
     await pool.query("UPDATE games SET active=false WHERE id=$1", [gameId]);
 
-    await pool.query(
-      `DELETE FROM read_assignments WHERE paper_id IN (SELECT id FROM papers WHERE game_id=$1)`,
+    // 3) Purge anciennes assignations
+    await pool.query(`
+      DELETE FROM read_assignments
+      WHERE paper_id IN (SELECT id FROM papers WHERE game_id=$1)
+    `, [gameId]);
+
+    // 4) Papiers de la partie
+    const paperRows = await pool.query(
+      "SELECT id FROM papers WHERE game_id=$1 ORDER BY id ASC",
       [gameId]
     );
+    const papers = paperRows.rows.map(r => r.id);
+    if (!papers.length) return res.json({ ok: true, assigned: 0 });
 
-    const papers = (await pool.query("SELECT id FROM papers WHERE game_id=$1 ORDER BY id ASC", [gameId])).rows.map(r=>r.id);
-    const players = (await pool.query("SELECT id FROM players ORDER BY name ASC")).rows.map(r=>r.id);
-    if (!papers.length || !players.length) return res.json({ ok: true, assigned: 0 });
+    // 5) Lecteurs éligibles = auteurs (admin inclus s'il a écrit)
+    const readersRows = await pool.query(
+      `SELECT DISTINCT pl.id
+       FROM players pl
+       WHERE EXISTS (
+         SELECT 1 FROM papers p
+         WHERE p.game_id=$1 AND p.author_id = pl.id
+       )
+       ORDER BY pl.name ASC`,
+      [gameId]
+    );
+    let readers = readersRows.rows.map(r => r.id);
 
-    // shuffle papers
-    for (let i = papers.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [papers[i], papers[j]] = [papers[j], papers[i]];
+    // Fallback : s'il n'y a aucun auteur, on répartit sur tous les joueurs
+    if (!readers.length) {
+      const all = await pool.query("SELECT id FROM players ORDER BY name ASC");
+      readers = all.rows.map(r => r.id);
+      if (!readers.length) return res.json({ ok: true, assigned: 0 });
     }
 
-    const batchSize = 3;
-    let readerIdx = 0;
-    for (let i=0;i<papers.length;i+=batchSize) {
-      const lot = papers.slice(i, i+batchSize);
-      const readerId = players[readerIdx % players.length];
-      readerIdx++;
-      for (const pid of lot) {
-        await pool.query("INSERT INTO read_assignments (paper_id, reader_id) VALUES ($1,$2)", [pid, readerId]);
-      }
+    // 6) Répartition équitable (round-robin) + ordre de lecture
+    const randomized = shuffle(papers);
+    let idx = 0;
+    let order = 1;
+    for (const pid of randomized) {
+      const readerId = readers[idx % readers.length];
+      idx++;
+      await pool.query(
+        `INSERT INTO read_assignments (paper_id, reader_id, read_order, revealed, consumed)
+         VALUES ($1,$2,$3,false,false)`,
+        [pid, readerId, order++]
+      );
     }
 
-    res.json({ ok: true, assigned: papers.length });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+    res.json({ ok: true, assigned: papers.length, readers: readers.length });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: String(e) });
+  }
 });
+
 
 // ---- player: my reading lot (from LAST closed game)
 app.get("/api/reading/lot", auth, async (req, res) => {
