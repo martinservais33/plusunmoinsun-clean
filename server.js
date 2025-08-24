@@ -253,11 +253,11 @@ app.post("/api/admin/reading/start", auth, async (req, res) => {
 
     // 5) Lecteurs éligibles = auteurs (admin inclus s'il a écrit)
     const readersRows = await pool.query(
-      `SELECT DISTINCT pl.id
+      `SELECT pl.id, pl.name
        FROM players pl
        WHERE EXISTS (
          SELECT 1 FROM papers p
-         WHERE p.game_id=$1 AND p.author_id = pl.id
+         WHERE p.game_id = $1 AND p.author_id = pl.id
        )
        ORDER BY pl.name ASC`,
       [gameId]
