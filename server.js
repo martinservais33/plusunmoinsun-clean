@@ -282,17 +282,42 @@ app.post("/api/admin/reading/start", auth, async (req, res) => {
 
     // 6) Répartition équitable (round-robin) + ordre de lecture
     const randomized = shuffle(papers);
-    let idx = 0;
-    let order = 1;
+    let idx = 0, order = 1;
     for (const pid of randomized) {
-      const readerId = readers[idx % readers.length];
-      idx++;
+      // On récupère le papier avec sa cible
+      const paperRes = await pool.query(
+        "SELECT target FROM papers WHERE id=$1",
+        [pid]
+      );
+      const targetName = paperRes.rows[0].target;
+    
+      // On cherche un lecteur qui n’est PAS la cible
+      let assignedReader = null;
+      for (let tries = 0; tries < readers.length; tries++) {
+        const candidate = readers[(idx + tries) % readers.length];
+        // Récupère le nom du candidat
+        const rnameRes = await pool.query("SELECT name FROM players WHERE id=$1", [candidate]);
+        const candidateName = rnameRes.rows[0].name;
+        if (candidateName !== targetName) {
+          assignedReader = candidate;
+          idx = (idx + tries + 1); // avance l’index
+          break;
+        }
+      }
+    
+      // Si tout le monde était la cible (cas théorique), on assigne quand même au premier
+      if (!assignedReader) {
+        assignedReader = readers[idx % readers.length];
+        idx++;
+      }
+    
       await pool.query(
         `INSERT INTO read_assignments (paper_id, reader_id, read_order, revealed, consumed)
          VALUES ($1,$2,$3,false,false)`,
-        [pid, readerId, order++]
+        [pid, assignedReader, order++]
       );
     }
+    
 
     res.json({ ok: true, assigned: papers.length, readers: readers.length });
   } catch (e) {
