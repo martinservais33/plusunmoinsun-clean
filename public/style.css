@@ -37,6 +37,7 @@ body{
 @media (min-width: 480px){ .app-logo { height:80px; } }
 
 .app-title {
+  font-family: 'Fredoka One', cursive;
   font-size: 2rem;       /* plus grand */
   font-weight: 700;      /* plus gras */
   text-align: center;    /* centre le texte à l'intérieur du span */
