@@ -46,7 +46,7 @@ async function refreshStatus(){
   } catch {
     const chip = el("statusChip");
     chip.className = "chip chip--muted";
-    chip.textContent = "—";
+    chip.textContent = "Jouez ! ";
   }
 }
 
@@ -61,7 +61,7 @@ async function refreshMe(){
     logoutBtn.style.display = "";
     logoutBtn.onclick = async () => { await api("/api/auth/logout", { method: "POST" }); location.reload(); }
   } else {
-    meLabel.textContent = "Non connecté";
+    meLabel.textContent = "choisis un joueur";
     logoutBtn.style.display = "none";
   }
   return CURRENT_USER;
