@@ -4,6 +4,7 @@
   --text:#e5e7eb;
   --muted:#94a3b8;
   --border:#1f2937;
+  --surface:#16181d; 
   --primary:#3b82f6;
   --accent:#22c55e;
   --danger:#ef4444;
@@ -21,17 +22,21 @@ body{
   color: var(--text);
 }
 
-/* Topbar */
+/* Topbar (unique) */
 .topbar{
   position:sticky; top:0; z-index:10;
   display:flex; align-items:center; justify-content:space-between;
-  padding:10px 16px; background:rgba(11,18,32,.85); backdrop-filter: blur(8px);
+  gap:12px; padding:10px 14px;
+  background:rgba(11,18,32,.85); /* sombre + translucide */
+  backdrop-filter: blur(8px);
   border-bottom:1px solid var(--border);
 }
-.topbar__left{display:flex; gap:10px; align-items:center}
-.logo{font-weight:700; letter-spacing:.5px;}
-.me-label{font-size:14px; color:var(--muted);}
-.topbar__right{display:flex; align-items:center; gap:8px}
+.topbar__left, .topbar__right { display:flex; align-items:center; gap:10px; }
+
+.app-logo { height:28px; width:auto; display:block; }
+@media (min-width: 480px){ .app-logo { height:32px; } }
+
+.app-title { font-weight:700; font-size:1.1rem; color: var(--text,#fff); }
 
 /* Layout */
 .container{max-width:960px; margin:18px auto; padding:0 16px}
@@ -124,3 +129,4 @@ h3{font-size:16px}
 }
 .toast--ok{border-color:#1b5e2e}
 .toast--err{border-color:#7f1d1d}
+
