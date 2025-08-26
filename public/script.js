@@ -61,7 +61,7 @@ async function refreshMe(){
     logoutBtn.style.display = "";
     logoutBtn.onclick = async () => { await api("/api/auth/logout", { method: "POST" }); location.reload(); }
   } else {
-    meLabel.textContent = "choisis un joueur";
+    meLabel.textContent = "Non-connecté : choisis un joueur";
     logoutBtn.style.display = "none";
   }
   return CURRENT_USER;
