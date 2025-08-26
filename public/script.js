@@ -304,6 +304,7 @@ async function afterLogin(){
 
   el("selectSection").style.display = "none";
   el("writeSection").style.display = "";
+  el("historySection").style.display = "none";
   el("readingSection").style.display = "";
   if (me.role === "admin") el("adminSection").style.display = "";
 
