@@ -202,6 +202,20 @@ async function loadNextToRead(){
   }
 }
 
+async function refreshMyRemaining() {
+  const node = el("readCounter");
+  if (!node) return;
+  try {
+    const r = await api("/api/reading/count");
+    node.textContent = r.remaining === 0 ? "0 à lire" : `${r.remaining} à lire`;
+    node.className = "chip" + (r.remaining ? "" : " chip--muted");
+  } catch {
+    node.textContent = "—";
+    node.className = "chip chip--muted";
+  }
+}
+
+
 async function revealCurrent(){
   if (!CURRENT_ASSIGNMENT_ID) return;
   try {
@@ -220,6 +234,7 @@ async function revealCurrent(){
         </div>
       `;
       el("nextAfterReveal").onclick = () => { CURRENT_ASSIGNMENT_ID = null; loadNextToRead(); };
+      await refreshMyRemaining();
     }
   } catch(e){ toast("Action impossible", "error"); }
 }
@@ -233,6 +248,7 @@ async function skipCurrent(){
     });
     CURRENT_ASSIGNMENT_ID = null;
     await loadNextToRead();
+    await refreshMyRemaining();
   } catch(e){ toast("Action impossible", "error"); }
 }
 
@@ -274,6 +290,7 @@ async function startReading(){
     const r = await api("/api/admin/reading/start", { method:"POST" });
     toast(`Lecture lancée (${r.assigned ?? "?"} papiers assignés)`);
     await refreshStatus();
+    await refreshMyRemaining();
     await loadNextToRead();
   } catch(e){ toast("Impossible de lancer la lecture", "error"); }
 }
@@ -311,6 +328,7 @@ async function afterLogin(){
   await refreshStatus();
   await refreshLastPaper();
   await loadNextToRead();
+  await refreshMyRemaining();
   if (me.role === "admin") await loadAllPapers();
 }
 
@@ -408,6 +426,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   await refreshMe();
   await loadPlayers();
   await refreshStatus();
+  await refreshMyRemaining();
 
   // Afficher ou masquer sections selon connexion initiale
   if (CURRENT_USER){
@@ -419,5 +438,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     await loadNextToRead();
     if (CURRENT_USER.role === "admin") await loadAllPapers();
   }
+
 });
 

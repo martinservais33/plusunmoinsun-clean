@@ -441,6 +441,24 @@ app.post("/api/reading/skip", auth, async (req, res) => {
   }
 });
 
+app.get("/api/reading/count", auth, async (req, res) => {
+  try {
+    const gameId = await getLastClosedGameId();
+    if (!gameId) return res.json({ remaining: 0 });
+
+    const r = await pool.query(
+      `SELECT COUNT(*)::int AS remaining
+       FROM read_assignments ra
+       JOIN papers p ON p.id = ra.paper_id
+       WHERE p.game_id=$1 AND ra.reader_id=$2 AND ra.consumed=false`,
+      [gameId, req.user.id]
+    );
+    res.json({ remaining: r.rows[0].remaining });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 // Liste des parties passées
 // Liste des parties passées (stats incluses)
 app.get("/api/games", async (req, res) => {
